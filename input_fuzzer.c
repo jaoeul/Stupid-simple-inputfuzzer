@@ -45,8 +45,6 @@ size_t get_corpus(const char *path, char ***ls) {
 		char *tmpstr = calloc(PATH_MAX + 1, sizeof(char));
 
 		if (strcmp(ep->d_name, ".") != 0 && strcmp(ep->d_name, "..") != 0) {
-			// strdup() avoids UB that can be caused by strcpy() when pointer
-			// goes out of scope
 			tmpstr = strcpy(tmpstr, path);
 			strcat(tmpstr, "/");
 			strcat(tmpstr, ep->d_name);
@@ -64,10 +62,6 @@ size_t get_corpus(const char *path, char ***ls) {
 void *fuzz(void *void_args) {
 
 	Thread_args *thread_args = (Thread_args*)void_args;
-	
-//	for (int i = 0; i < thread_args->corpus_count; i++) {
-//		printf("%s\n", thread_args->corpus[i]);
-//	}
 
 	char *chosen = NULL; 
 	long count = 0;
@@ -194,10 +188,6 @@ int main(int argc, char *argv[]) {
 
 	corpus_count = get_corpus(corpus_dir, &corpus);
 
-	//for (int i = 0; i < corpus_count; i++) {
-	//	printf("%s\n", corpus[i]);
-	//}
-
 	Thread_args *thread_args  = malloc(sizeof(*thread_args));
 	thread_args->corpus       = corpus;
 	thread_args->corpus_count = corpus_count;
@@ -218,24 +208,4 @@ int main(int argc, char *argv[]) {
 	}
 	free(corpus);
 	free(thread_args);
-
-	//	// Take a random file from the corpus and mutate it
-	//	for (int i = 0; i < thread_args->corpus->pos; i++) {
-	//		char command[PATH_MAX+1];
-	//		strcpy(command, target);
-	//		strcat(command, " ");
-	//		strcat(command, target_flags);
-	//		strcat(command, " ");
-	//		strcat(command, corpus_dir);
-	//		strcat(command, "/");
-	//		strcat(command, corpus->values[i]);
-	//		strcat(command, " > /dev/null 2>&1");
-
-	//		//printf("Running %s\n", corpus->values[i]);
-	//		int status = system(command);
-	//		printf("%d\t%s\t%d\n", i, command, status);
-	//		if (status == 11 || status == -11)
-	//			break;
-	//	}
-
 }
