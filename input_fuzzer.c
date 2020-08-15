@@ -63,9 +63,7 @@ size_t get_corpus(const char *path, char ***ls) {
 }
 
 void *fuzz(void *void_args) {
-	pthread_mutex_lock(&lock);
 	Thread_args *thread_args = (Thread_args*)void_args;
-	pthread_mutex_unlock(&lock);
 
 	char *chosen = NULL;
 
