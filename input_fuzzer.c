@@ -1,10 +1,11 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <dirent.h>
 #include <string.h>
 #include <time.h>
 #include <errno.h>
 
-clock_t start, now;
+time_t start, now;
 
 typedef struct {
 	char **corpus;
@@ -45,7 +46,6 @@ size_t get_corpus(const char *path, char ***ls) {
 
 		if (strcmp(ep->d_name, ".") != 0 && strcmp(ep->d_name, "..") != 0) {
 			tmpstr = strcpy(tmpstr, path);
-			strcat(tmpstr, "/");
 			strcat(tmpstr, ep->d_name);
 			(*ls)[count++] = strdup(tmpstr);
 		}
@@ -63,7 +63,7 @@ void *fuzz(void *void_args) {
 	Thread_args *thread_args = (Thread_args*)void_args;
 
 	char *chosen = NULL; 
-	long count = 0;
+	int count = 0;
 	int crashes = 0;
 	for(;;) {
 		// chose random file to input
@@ -112,7 +112,7 @@ void *fuzz(void *void_args) {
 		mut_fname = strcpy(mut_fname, thread_args->crash_dir);
 		strcat(mut_fname, "crash_");
 
-		sprintf(tmpstr, "%ld", count);
+		sprintf(tmpstr, "%d", count);
 		strcat(mut_fname, tmpstr);
 
 		FILE *mutated_file = fopen(mut_fname, "w");
@@ -129,9 +129,10 @@ void *fuzz(void *void_args) {
 		strcat(command, mut_fname);
 		strcat(command, " > /dev/null 2>&1");
 		int status = system(command);
+		printf("%s\t", command);
 
 		// if crash found
-		if (status == 11 || status == -11) {
+		if (status == 11 || status == -11 || status == 35584) {
 			printf("Program exited with SIGSEV\n");
 			crashes++;
 		} else {
@@ -143,11 +144,14 @@ void *fuzz(void *void_args) {
 		}
 
 		// report performance
-		now = clock();
-		double time_spent = (double)(now - start) / CLOCKS_PER_SEC;
-		printf("%f\t", time_spent);
-		printf("Fuzz cases: %ld\t", count);
+		now = time(NULL) - start;
+		int time_spent = now;
+		printf("%d\t", time_spent);
+		printf("exited with: %d\t", status);
+		printf("cases: %d\t", count);
 		printf("Crashes: %d\t", crashes);
+		double fcps = (double)count / (double)time_spent;
+		printf("fcps: %f\t", fcps);
 		printf("Mutated file: %s\n", chosen);
 
 		free(mut_fname);
@@ -158,7 +162,7 @@ void *fuzz(void *void_args) {
 }
 
 int main(int argc, char *argv[]) {
-	start = clock();
+	start = time(NULL);
 
 	if (argc == 1) {
 		printf("ERROR:Provide args\n");
@@ -166,7 +170,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (strcmp(argv[1], "-h") == 0) {
-		printf("Usage: ./fuzz </path/to/target/binar> <\"flags\"> </path/to/corpus_dir> </path/to/crashe_dir>");
+		printf("Usage: ./fuzz </path/to/target/binary> <\"flags\"> </path/to/corpus_dir/> </path/to/crashe_dir/>");
 		exit(0);
 	}
 
@@ -200,11 +204,13 @@ int main(int argc, char *argv[]) {
 
 	srand(time(NULL));
 
+	// Multithreading incoming
 	fuzz((void *)thread_args);
 
 	for (int i = 0; i < corpus_count; i++) {
 		free(corpus[i]);
 	}
+
 	free(corpus);
 	free(thread_args);
 }
