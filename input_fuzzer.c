@@ -137,7 +137,7 @@ void *fuzz(void *void_args) {
 		int status = system(command);
 
 		// if crash found
-		if (status == 11 || status == -11 || status == 35584) {
+		if (status == 35584) {
 			printf("Program exited with SIGSEV\n");
 			pthread_mutex_lock(&lock);
 			crashes++;
@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (argc == 1) {
-		printf("Usage: ./fuzz <threads> </path/to/target/binary> <\"flags\"> </path/to/corpus_dir/> </path/to/crashe_dir/>");
+		printf("Usage: ./fuzz <threads> </path/to/target/binary> <\"flags\"> </path/to/corpus_dir/> </path/to/crashes_dir/>");
 		exit(0);
 	}
 
