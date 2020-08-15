@@ -4,8 +4,12 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include <pthread.h>
 
+int count = 0;
+int crashes = 0;
 time_t start, now;
+pthread_mutex_t lock;
 
 typedef struct {
 	char **corpus;
@@ -59,12 +63,12 @@ size_t get_corpus(const char *path, char ***ls) {
 }
 
 void *fuzz(void *void_args) {
-
+	pthread_mutex_lock(&lock);
 	Thread_args *thread_args = (Thread_args*)void_args;
+	pthread_mutex_unlock(&lock);
 
-	char *chosen = NULL; 
-	int count = 0;
-	int crashes = 0;
+	char *chosen = NULL;
+
 	for(;;) {
 		// chose random file to input
 		int r = rand() % thread_args->corpus_count;
@@ -110,6 +114,7 @@ void *fuzz(void *void_args) {
 		char tmpstr[FILENAME_MAX + 1]; 
 
 		mut_fname = strcpy(mut_fname, thread_args->crash_dir);
+
 		strcat(mut_fname, "crash_");
 
 		sprintf(tmpstr, "%d", count);
@@ -122,19 +127,21 @@ void *fuzz(void *void_args) {
 
 		// run the mutated input through target program
 		char command[_POSIX_ARG_MAX];
-		strcpy(command, thread_args->target);
+		strcpy(command, "timeout 1 ");
+		strcat(command, thread_args->target);
 		strcat(command, " ");
 		strcat(command, thread_args->target_flags);
 		strcat(command, " ");
 		strcat(command, mut_fname);
 		strcat(command, " > /dev/null 2>&1");
 		int status = system(command);
-		printf("%s\t", command);
 
 		// if crash found
 		if (status == 11 || status == -11 || status == 35584) {
 			printf("Program exited with SIGSEV\n");
+			pthread_mutex_lock(&lock);
 			crashes++;
+			pthread_mutex_unlock(&lock);
 		} else {
 			// if no crash, remove file from disc
 			char rm[_POSIX_ARG_MAX];
@@ -146,16 +153,17 @@ void *fuzz(void *void_args) {
 		// report performance
 		now = time(NULL) - start;
 		int time_spent = now;
-		printf("%d\t", time_spent);
-		printf("exited with: %d\t", status);
-		printf("cases: %d\t", count);
+		printf("Time: %d\t", time_spent);
+		printf("Cases: %d\t", count);
 		printf("Crashes: %d\t", crashes);
 		double fcps = (double)count / (double)time_spent;
-		printf("fcps: %f\t", fcps);
-		printf("Mutated file: %s\n", chosen);
+		printf("FCPS: %f\n", fcps);
 
 		free(mut_fname);
+
+		pthread_mutex_lock(&lock);
 		count++;
+		pthread_mutex_unlock(&lock);
 	}
 	
 	return NULL;
@@ -164,27 +172,30 @@ void *fuzz(void *void_args) {
 int main(int argc, char *argv[]) {
 	start = time(NULL);
 
+	if (pthread_mutex_init(&lock, NULL) != 0)
+	{
+		printf("Mutex init failed\n");
+		return 1;
+	}
+
 	if (argc == 1) {
-		printf("ERROR:Provide args\n");
+		printf("Usage: ./fuzz <threads> </path/to/target/binary> <\"flags\"> </path/to/corpus_dir/> </path/to/crashe_dir/>");
 		exit(0);
 	}
 
-	if (strcmp(argv[1], "-h") == 0) {
-		printf("Usage: ./fuzz </path/to/target/binary> <\"flags\"> </path/to/corpus_dir/> </path/to/crashe_dir/>");
-		exit(0);
-	}
+	int jobs           = atoi(argv[1]);
+	char *target       = argv[2];
+	char *target_flags = argv[3];
+	char *corpus_dir   = argv[4];
+	char *crash_dir    = argv[5];
 
-	char *target       = argv[1];
-	char *target_flags = argv[2];
-	char *corpus_dir   = argv[3];
-	char *crash_dir    = argv[4];
-
-	printf("****************************");
+	printf("****************************\n");
+	printf("Threads engaged: %d\n", jobs);
 	printf("Fuzzing target: %s\n", target);
 	printf("Target flags: %s\n", target_flags);
 	printf("Corpus located at: %s\n", corpus_dir);
 	printf("Crashes will be stored in %s\n", crash_dir);
-	printf("****************************");
+	printf("****************************\n");
 
 	char **corpus;
 	size_t corpus_count;
@@ -205,12 +216,21 @@ int main(int argc, char *argv[]) {
 	srand(time(NULL));
 
 	// Multithreading incoming
-	fuzz((void *)thread_args);
+	pthread_t thread_id[jobs];
+
+	for (int i = 0; i < jobs; i++) {
+		pthread_create(&thread_id[i], NULL, fuzz, thread_args);
+	}
+
+	for (int i = 0; i < jobs; i++) {
+		pthread_join(thread_id[i], NULL);
+	}
 
 	for (int i = 0; i < corpus_count; i++) {
 		free(corpus[i]);
 	}
 
+	pthread_mutex_destroy(&lock);
 	free(corpus);
 	free(thread_args);
 }
